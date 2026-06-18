@@ -4,8 +4,7 @@ const {
     createAudioResource, 
     AudioPlayerStatus, 
     VoiceConnectionStatus, 
-    StreamType,
-    entersState
+    StreamType
 } = require('@discordjs/voice');
 const prism = require('prism-media');
 const ffmpeg = require('ffmpeg-static');
@@ -17,7 +16,6 @@ class TtsManager {
     }
 
     join(guildId, voiceChannelId, textChannelId, adapterCreator) {
-        // Disconnect from existing connection if any
         this.leave(guildId);
 
         const connection = joinVoiceChannel({
@@ -25,7 +23,7 @@ class TtsManager {
             guildId: guildId,
             adapterCreator: adapterCreator,
             selfMute: false,
-            selfDeaf: false // Set to false to show active user status clearly
+            selfDeaf: false
         });
 
         const player = createAudioPlayer();
@@ -97,16 +95,15 @@ class TtsManager {
         const text = session.queue.shift();
 
         try {
+            // Alternative bulletproof direct endpoint
             const encodedText = encodeURIComponent(text);
-            const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=en&client=tw-ob&q=${encodedText}`;
+            const url = `https://api.dictionaryapi.dev/media/pronunciations/en/v2/apple-en.mp3`; // Fallback verification test endpoint
+            const realTtsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=en&client=tw-ob&q=${encodedText}`;
 
-            // Create FFmpeg process optimized for Discord audio transmission
-            const pr = new prism.FFmpeg({
+            const process = new prism.FFmpeg({
                 args: [
-                    '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\n',
-                    '-i', url,
-                    '-analyze%duration', '0',
-                    '-loglevel', '0',
+                    '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\n',
+                    '-i', realTtsUrl,
                     '-f', 's16le',
                     '-ar', '48000',
                     '-ac', '2'
@@ -114,8 +111,7 @@ class TtsManager {
                 command: ffmpeg
             });
 
-            // Feed raw PCM directly into discord voice engine with strict stream typing
-            const resource = createAudioResource(pr, {
+            const resource = createAudioResource(process, {
                 inputType: StreamType.Raw
             });
 
