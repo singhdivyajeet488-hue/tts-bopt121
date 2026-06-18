@@ -4,7 +4,7 @@ const {
     createAudioResource, 
     AudioPlayerStatus, 
     VoiceConnectionStatus, 
-    getVoiceConnection,
+    StreamType,
     entersState
 } = require('@discordjs/voice');
 const prism = require('prism-media');
@@ -17,12 +17,15 @@ class TtsManager {
     }
 
     join(guildId, voiceChannelId, textChannelId, adapterCreator) {
+        // Disconnect from existing connection if any
+        this.leave(guildId);
+
         const connection = joinVoiceChannel({
             channelId: voiceChannelId,
             guildId: guildId,
             adapterCreator: adapterCreator,
             selfMute: false,
-            selfDeaf: true
+            selfDeaf: false // Set to false to show active user status clearly
         });
 
         const player = createAudioPlayer();
@@ -47,17 +50,6 @@ class TtsManager {
             logger.error(`Audio player error in guild ${guildId}:`, error);
             session.isPlaying = false;
             this.processQueue(guildId);
-        });
-
-        connection.on(VoiceConnectionStatus.Disconnected, async () => {
-            try {
-                await Promise.race([
-                    entersState(connection, VoiceConnectionStatus.Signalling, 5000),
-                    entersState(connection, VoiceConnectionStatus.Connecting, 5000),
-                ]);
-            } catch (error) {
-                this.leave(guildId);
-            }
         });
 
         this.sessions.set(guildId, session);
@@ -105,29 +97,31 @@ class TtsManager {
         const text = session.queue.shift();
 
         try {
-            // Using a highly resilient, alternative open TTS mirror endpoint
             const encodedText = encodeURIComponent(text);
             const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=en&client=tw-ob&q=${encodedText}`;
 
-            const process = new prism.FFmpeg({
+            // Create FFmpeg process optimized for Discord audio transmission
+            const pr = new prism.FFmpeg({
                 args: [
-                    '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36\r\n',
+                    '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\n',
                     '-i', url,
+                    '-analyze%duration', '0',
+                    '-loglevel', '0',
                     '-f', 's16le',
                     '-ar', '48000',
                     '-ac', '2'
                 ],
-                shell: false,
                 command: ffmpeg
             });
 
-            const resource = createAudioResource(process, {
-                inputType: 'raw'
+            // Feed raw PCM directly into discord voice engine with strict stream typing
+            const resource = createAudioResource(pr, {
+                inputType: StreamType.Raw
             });
 
             session.player.play(resource);
         } catch (error) {
-            logger.error(`Error generating/playing alternative TTS in guild ${guildId}:`, error);
+            logger.error(`Error playing TTS stream:`, error);
             session.isPlaying = false;
             this.processQueue(guildId);
         }
