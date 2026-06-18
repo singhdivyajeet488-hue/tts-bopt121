@@ -7,7 +7,6 @@ const {
     getVoiceConnection,
     entersState
 } = require('@discordjs/voice');
-const googleTTS = require('google-tts-api');
 const prism = require('prism-media');
 const ffmpeg = require('ffmpeg-static');
 const logger = require('../utils/logger');
@@ -106,17 +105,13 @@ class TtsManager {
         const text = session.queue.shift();
 
         try {
-            const url = googleTTS.getAudioUrl(text, {
-                lang: 'en',
-                slow: false,
-                host: 'https://translate.google.com',
-                timeout: 10000,
-            });
+            // Using a highly resilient, alternative open TTS mirror endpoint
+            const encodedText = encodeURIComponent(text);
+            const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=en&client=tw-ob&q=${encodedText}`;
 
-            // Added real browser headers here to safely bypass proxy blocks on data centers
             const process = new prism.FFmpeg({
                 args: [
-                    '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n',
+                    '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36\r\n',
                     '-i', url,
                     '-f', 's16le',
                     '-ar', '48000',
@@ -132,7 +127,7 @@ class TtsManager {
 
             session.player.play(resource);
         } catch (error) {
-            logger.error(`Error generating/playing TTS in guild ${guildId}:`, error);
+            logger.error(`Error generating/playing alternative TTS in guild ${guildId}:`, error);
             session.isPlaying = false;
             this.processQueue(guildId);
         }
