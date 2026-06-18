@@ -4,7 +4,8 @@ const {
     createAudioResource, 
     AudioPlayerStatus, 
     VoiceConnectionStatus, 
-    getVoiceConnection 
+    getVoiceConnection,
+    entersState
 } = require('@discordjs/voice');
 const googleTTS = require('google-tts-api');
 const prism = require('prism-media');
@@ -112,8 +113,10 @@ class TtsManager {
                 timeout: 10000,
             });
 
+            // Added real browser headers here to safely bypass proxy blocks on data centers
             const process = new prism.FFmpeg({
                 args: [
+                    '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n',
                     '-i', url,
                     '-f', 's16le',
                     '-ar', '48000',
@@ -124,7 +127,7 @@ class TtsManager {
             });
 
             const resource = createAudioResource(process, {
-                inputType: prism.VolumeTransformer ? 'raw' : 'arbitrary'
+                inputType: 'raw'
             });
 
             session.player.play(resource);
